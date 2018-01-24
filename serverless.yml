@@ -1,0 +1,84 @@
+service: threatstack-aws-s3-publisher
+
+plugins:
+  - serverless-python-requirements
+  - serverless-cloudformation-parameter-setter
+  - serverless-sam
+
+custom:
+  stage: "${opt:stage, env:SLS_STAGE, 'dev'}"
+  profile: "${opt:aws-profile, env:AWS_PROFILE, env:AWS_DEFAULT_PROFILE, 'default'}"
+
+  ts_sns_publisher_stack: "${env:TS_AWS_SNS_PUBLISHER_STACK, 'threatstack-aws-sns-publisher-${self:custom.stage}'}"
+
+  # Threat Stack setup
+  cf-parameters:
+    ThreatStackAwsSnsPublisherStack: "${self:custom.ts_sns_publisher_stack}"
+
+  # Ensure consistent build environment; also avoid issue deploying from Mac
+  # with Homebrew Python.
+  pythonRequirements:
+    dockerizePip: true
+
+provider:
+  name: aws
+  profile: ${self:custom.profile}
+  stage: ${self:custom.stage}
+  runtime: python3.6
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "S3:PutObject"
+      Resource:
+        Ref: S3Bucket
+
+functions:
+  ThreatStackAwsS3Publisher:
+    description: "Store Threat Stack alert data in S3."
+    handler: handlers/threatstack-aws-s3-publisher.handler
+    memorySize: 128
+    timeout: 15
+    environment:
+      AWS_S3_BUCKET_NAME:
+        Ref: S3Bucket
+    events:
+      - sns:
+          Fn::ImportValue: "${self:custom.ts_sns_publisher_stack}-SnsTopicArn"
+
+
+resources:
+  Parameters:
+    ThreatStackAwsSnsPublisherStack:
+      Type: String
+      Description: "Stack name of Threat Stack AWS SNS Publisher"
+      NoEcho: true
+
+  Resources:
+    DeployS3Bucket:
+      Type: "AWS::S3::Bucket"
+      Properties:
+        # Overriding this for ease by outsiders
+        # FIXME: Need AccountId below
+        BucketName:
+          Fn::Join:
+            - "-"
+            - - Ref: "AWS::AccountId"
+              - "serverlessops"
+              - "${self:service}"
+              - "${self:provider.stage}"
+        AccessControl: "Private"
+
+
+  Outputs:
+    S3BucketName:
+      Description: "S3Bucket where alerts are stored."
+      Value:
+        Ref: "S3Bucket"
+      Export:
+        Name:
+          Fn::Join:
+            - "-"
+            - - Ref: "AWS::StackName"
+              - "S3Bucket"
+
+
