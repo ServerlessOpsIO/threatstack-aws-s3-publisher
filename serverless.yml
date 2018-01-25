@@ -25,12 +25,6 @@ provider:
   profile: ${self:custom.profile}
   stage: ${self:custom.stage}
   runtime: python3.6
-  iamRoleStatements:
-    - Effect: "Allow"
-      Action:
-        - "S3:PutObject"
-      Resource:
-        Ref: AlertS3Bucket
 
 functions:
   ThreatStackAwsS3Publisher:
